@@ -31,9 +31,9 @@ namespace detail {
 
     template <typename T, typename S>
     void registerType(TypeMap_t<S>& typeMap, const std::string& name) {
-        typeMap[name] = [](std::istream& is) {
+        typeMap.try_emplace(name, [](std::istream& is) {
             return S::template create<T>(is);
-        };
+        });
     }
 
     template <typename B, typename Last>
