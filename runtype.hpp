@@ -8,10 +8,15 @@
 
 namespace runtype {
 
-template <typename ... U>
-struct Pack {};
+template <typename T>
+using TypeMap_t = std::map<std::string, std::function<T(std::istream&)>>;
+
+template <typename R, typename ... U>
+class Basic;
 
 namespace detail {
+    template <typename ... U>
+    struct Pack {};
 
     template <typename T>
     struct always_false : std::false_type {};
@@ -23,13 +28,39 @@ namespace detail {
     constexpr auto hasValueMember(...) -> std::false_type {
         return {};
     }
+
+    template <typename T, typename S>
+    void registerType(TypeMap_t<S>& typeMap, const std::string& name) {
+        typeMap[name] = [](std::istream& is) {
+            return S::template create<T>(is);
+        };
+    }
+
+    template <typename B, typename Last>
+    inline void makeTypeMapImpl(TypeMap_t<B>& m, std::list<std::string> types) {
+        registerType<Last>(m, *std::begin(types));
+    }
+
+    template <typename B, typename First, typename Second, typename ... Rest>
+    inline void makeTypeMapImpl(TypeMap_t<B>& m, std::list<std::string> types) {
+        makeTypeMapImpl<B, First>(m, types);
+        types.pop_front();
+        makeTypeMapImpl<B, Second, Rest...>(m, types);
+    }
+
+    template <typename R, typename ... U>
+    inline TypeMap_t<Basic<R, U...>> makeTypeMap(detail::Pack<U...>, std::list<std::string> types) {
+        TypeMap_t<Basic<R, U...>> m;
+        detail::makeTypeMapImpl<Basic<R, U...>, U...>(m, types);
+        return m;
+    }
 } // namespace detail
 
 template <typename R, typename ... U>
 class Basic {
 public:
     using Variant_t = std::variant<U...>;
-    using Types = Pack<U...>;
+    using Types = detail::Pack<U...>;
     using Resolver = R;
 private:
     Variant_t v_;
@@ -78,45 +109,9 @@ std::istream& operator>>(std::istream& is, Basic<U...>& b) {
     return b.read(is);
 }
 
-template <typename T>
-using TypeMap_t = std::map<std::string, std::function<T(std::istream&)>>;
-
-template <typename T, typename S>
-void registerType(TypeMap_t<S>& typeMap, const std::string& name) {
-    typeMap[name] = [](std::istream& is) {
-        return S::template create<T>(is);
-    };
-}
-
-namespace detail {
-    template <typename B, typename Last>
-    inline void makeTypeMapImpl(TypeMap_t<B>& m, std::list<std::string> types) {
-        registerType<Last>(m, *std::begin(types));
-    }
-
-    template <typename B, typename First, typename Second, typename ... Rest>
-    inline void makeTypeMapImpl(TypeMap_t<B>& m, std::list<std::string> types) {
-        makeTypeMapImpl<B, First>(m, types);
-        types.pop_front();
-        makeTypeMapImpl<B, Second, Rest...>(m, types);
-    }
-
-    template <typename R, typename ... U>
-    inline TypeMap_t<Basic<R, U...>> makeTypeMapNoDeduction(std::list<std::string> types) {
-        TypeMap_t<Basic<R, U...>> m;
-        detail::makeTypeMapImpl<Basic<R, U...>,  U...>(m, types);
-        return m;
-    }
-} // namespace detail
-
-template <typename R, typename ... U>
-inline TypeMap_t<Basic<R, U...>> makeTypeMap(Pack<U...>, std::list<std::string> types) {
-    return detail::makeTypeMapNoDeduction<R, U...>(types);
-}
-
 template <typename B>
 inline TypeMap_t<B> makeTypeMap(std::list<std::string> types) {
-    return makeTypeMap<typename B::Resolver>(typename B::Types(), types);
+    return detail::makeTypeMap<typename B::Resolver>(typename B::Types(), types);
 }
 
 template <typename ... U>
