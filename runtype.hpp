@@ -25,13 +25,15 @@ namespace detail {
     }
 } // namespace detail
 
-template <typename ... U>
+template <typename R, typename ... U>
 class Basic {
 public:
     using Variant_t = std::variant<U...>;
     using Types = Pack<U...>;
+    using Resolver_t = R;
 private:
     Variant_t v_;
+    static Resolver_t r_;
 public:
     template <typename T>
     Basic(const T& rhs) : v_(rhs) {}
@@ -56,19 +58,24 @@ public:
     }
 
     template <typename T>
-    static Basic<U...> create(std::istream& is) {
-        Basic<U...> b = Basic<U...>(T());
+    static Basic<R, U...> create(std::istream& is) {
+        Basic<R, U...> b = Basic<R, U...>(T());
         b.read(is);
         return b;
     }
+
+    static Basic<R, U...> create(const std::string& type, std::istream& is) {
+        return r_.at(type)(is);
+        //return Resolver::at(type)(is);
+    }
 };
 
-template <typename ... U>
-std::ostream& operator<<(std::ostream& os, const Basic<U...>& b) {
+template <typename R, typename ... U>
+std::ostream& operator<<(std::ostream& os, const Basic<R, U...>& b) {
     return b.write(os);
 }
 
-template <typename ... U>
+template <typename R, typename ... U>
 std::istream& operator>>(std::istream& is, Basic<U...>& b) {
     return b.read(is);
 }
@@ -81,12 +88,6 @@ void registerType(TypeMap_t<S>& typeMap, const std::string& name) {
     typeMap[name] = [](std::istream& is) {
         return S::template create<T>(is);
     };
-}
-
-template <typename ... U>
-Basic<U...> newBasic(const std::string& type, std::istream& is,
-        const TypeMap_t<Basic<U...>> typeMap) {
-    return typeMap.at(type)(is);
 }
 
 namespace detail {
@@ -103,17 +104,29 @@ namespace detail {
     }
 } // namespace detail
 
-template <typename ... U>
-TypeMap_t<Basic<U...>> makeTypeMap(std::list<std::string> types) {
-    TypeMap_t<Basic<U...>> m;
-    detail::makeTypeMapImpl<Basic<U...>, U...>(m, types);
+template <typename R, typename ... U>
+TypeMap_t<Basic<R, U...>> makeTypeMap(std::list<std::string> types) {
+    TypeMap_t<Basic<R, U...>> m;
+    detail::makeTypeMapImpl<Basic<R, U...>,  U...>(m, types);
     return m;
 }
 
-template <typename ... U>
-TypeMap_t<Basic<U...>> makeTypeMap(Pack<U...>, std::list<std::string> types) {
-    return makeTypeMap<U...>(types);
+template <typename R, typename ... U>
+TypeMap_t<Basic<R, U...>> makeTypeMap(Pack<U...>, std::list<std::string> types) {
+    return makeTypeMap<R, U...>(types);
 }
+
+template <typename ... U>
+class BasicResolver {
+    using B = Basic<BasicResolver<U...>, U...>;
+    TypeMap_t<B> map_;
+public:
+    auto at(const std::string& s) { return map_.at(s); }
+    BasicResolver(std::list<std::string> s) {
+        map_ = makeTypeMap<BasicResolver<U...>, U...>(s);
+    }
+};
+
 } // namespace runtype
 
 #endif // RUNTYPE_HPP
