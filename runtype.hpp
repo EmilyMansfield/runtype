@@ -18,17 +18,6 @@ namespace detail {
     template <typename ... U>
     struct Pack {};
 
-    template <typename T>
-    struct always_false : std::false_type {};
-
-    template <typename T>
-    constexpr auto hasValueMember(T x) -> decltype(x.value, std::true_type{}) {
-        return {};
-    }
-    constexpr auto hasValueMember(...) -> std::false_type {
-        return {};
-    }
-
     template <typename T, typename S>
     void registerType(TypeMap_t<S>& typeMap, const std::string& name) {
         typeMap.try_emplace(name, [](std::istream& is) {
@@ -80,11 +69,7 @@ public:
 
     template <typename T>
     auto get() {
-        if constexpr (detail::hasValueMember(T())) {
-            return std::get<T>(v_).value;
-        } else {
-            static_assert(detail::always_false<T>::value, "No value member");
-        }
+        return std::get<T>(v_);
     }
 
     template <typename T>
