@@ -124,7 +124,7 @@ class BasicResolver {
 public:
     using MapType = TypeMap_t<Basic<BasicResolver<U...>, U...>>;
 private:
-    static MapType map;
+    const static MapType map;
 public:
     static auto at(const std::string& s) { return map.at(s); }
 };
