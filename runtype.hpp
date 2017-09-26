@@ -69,12 +69,12 @@ public:
     Basic(const T& rhs) : v_(rhs) {}
 
     std::ostream& write(std::ostream& os) const {
-        std::visit([&os](auto&& arg) { os << arg.value; }, v_);
+        std::visit([&os](auto&& arg) { os << arg; }, v_);
         return os;
     }
 
     std::istream& read(std::istream& is) {
-        std::visit([&is](auto&& arg) { is >> arg.value; }, v_);
+        std::visit([&is](auto&& arg) { is >> arg; }, v_);
         return is;
     }
 
