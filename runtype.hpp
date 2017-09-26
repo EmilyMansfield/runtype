@@ -48,11 +48,11 @@ namespace detail {
 template <typename R, typename ... U>
 class Basic {
 public:
-    using Variant_t = std::variant<U...>;
+    using Variant = std::variant<U...>;
     using Types = detail::Pack<U...>;
     using Resolver = R;
 private:
-    Variant_t v_;
+    Variant v_;
 public:
     template <typename T>
     Basic(const T& rhs) : v_(rhs) {}
