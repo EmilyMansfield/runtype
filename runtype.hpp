@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <variant>
+#include <memory>
 #include <list>
 #include <map>
 
@@ -52,6 +53,14 @@ namespace detail {
         detail::makeTypeMapImpl<Basic<R, U...>, U...>(m, types);
         return m;
     }
+
+    class TypeInstance {
+    public:
+        virtual std::ostream& write(std::ostream&) const = 0;
+        virtual std::istream& read(std::istream&) = 0;
+        virtual ~TypeInstance() {}
+    };
+
 } // namespace detail
 
 // R is any `Resolver` class, namely any class with a static function
@@ -75,7 +84,7 @@ namespace detail {
 //
 //   - Each T must be default constructible.
 template <typename R, typename ... U>
-class Basic {
+class Basic : public detail::TypeInstance {
 public:
     using Variant = std::variant<U...>;
     using Types = detail::Pack<U...>;
@@ -119,7 +128,7 @@ public:
     // Construct a new Basic containing a type from an input stream,
     // using the Resolver to resolve the type string
     static Basic<R, U...> create(const std::string& type, std::istream& is) {
-        return Resolver::at(type)(is);
+        return Resolver::resolveBasic(type)(is);
     }
 };
 
@@ -133,6 +142,74 @@ std::istream& operator>>(std::istream& is, Basic<R, U...>& b) {
     return b.read(is);
 }
 
+template <typename R>
+class CompoundInstance;
+
+class CompoundType {
+public:
+    struct Member {
+        std::string name;
+        std::string type;
+    };
+
+private:
+    std::string name_;
+    const std::vector<Member> members_;
+
+public:
+    CompoundType(const std::string& name, std::initializer_list<Member> l)
+        : name_(name), members_(l) {}
+
+    const std::vector<Member>& members() const {
+        return members_;
+    }
+
+    std::string name() const {
+        return name_;
+    }
+
+    template <typename R>
+    CompoundInstance<R> create(std::istream& is) const {
+        return CompoundInstance<R>(name_, is);
+    }
+};
+
+template <typename R>
+class CompoundInstance : public detail::TypeInstance {
+    using member_type = std::unique_ptr<detail::TypeInstance>;
+    using Resolver = R;
+    const CompoundType& type_;
+    std::vector<member_type> members_;
+public:
+    CompoundInstance(const std::string& type, std::istream& is)
+        : type_(Resolver::resolveCompound(type)) {
+        read(is);
+    }
+
+    std::ostream& write(std::ostream& os) const {
+        for (const auto& member : members_) {
+            member->write(os);
+        }
+        return os;
+    }
+
+    std::istream& read(std::istream& is) {
+        for (std::size_t i = 0; i < type_.members().size(); ++i) {
+            const auto& member = type_.members()[i];
+            if (R::isBasicType(member.type)) {
+                members_.emplace_back(std::make_unique<typename R::BasicType>(
+                            R::resolveBasic(member.type)(is)));
+            } else if (R::isCompoundType(member.type)) {
+                members_.emplace_back(std::make_unique<CompoundInstance<R>>(
+                            R::resolveCompound(member.type).template create<R>(is)));
+            } else {
+                throw std::runtime_error("No such type");
+            }
+        }
+        return is;
+    }
+};
+
 // If B is a Basic<R, U...>, then construct a type map mapping the given
 // types to the U...
 template <typename B>
@@ -140,7 +217,7 @@ inline TypeMap_t<B> makeTypeMap(std::list<std::string> types) {
     return detail::makeTypeMap<typename B::Resolver>(typename B::Types(), types);
 }
 
-// Example implementation of a type resolver. Uses a static variable
+// Example implementation of a type resolver. Uses static variables
 // that must be explicitly specialized by the user. It is
 // convenient to use the BasicWithDefaultResolver alias to save
 // duplicating template parameters. For example,
@@ -148,17 +225,41 @@ inline TypeMap_t<B> makeTypeMap(std::list<std::string> types) {
 //     using B = BasicWithDefaultResolver<int, double>;
 //     using BR = B::Resolver;
 //     template <>
-//     const B::Resolver::MapType B::Resolver::map
-//      = makeTypeMap<B>({"int", "double"});
+//     const BR::BasicMapType BR::basicTypes = makeTypeMap<B>({"int", "double"});
+//     template <>
+//     BR::CompoundMapType BR::compoundTypes = {};
 //
 template <typename ... U>
 class BasicResolver {
 public:
-    using MapType = TypeMap_t<Basic<BasicResolver<U...>, U...>>;
+    using BasicType = Basic<BasicResolver<U...>, U...>;
+    using BasicMapType = TypeMap_t<BasicType>;
+    using CompoundMapType = std::map<std::string, CompoundType>;
 private:
-    const static MapType map;
+    const static BasicMapType basicTypes;
+    static CompoundMapType compoundTypes;
 public:
-    static auto at(const std::string& s) { return map.at(s); }
+    static auto resolveBasic(const std::string& s) {
+        return basicTypes.at(s);
+    }
+
+    static void registerCompoundType(CompoundType type) {
+        compoundTypes.emplace(type.name(), type);
+    }
+
+    static const CompoundType& resolveCompound(const std::string& s) {
+        return compoundTypes.at(s);
+    }
+
+    static bool isBasicType(const std::string& s) {
+        return std::end(basicTypes) != std::find_if(std::begin(basicTypes),
+                std::end(basicTypes), [&s](const auto& p) { return p.first == s; });
+    }
+
+    static bool isCompoundType(const std::string& s) {
+        return std::end(compoundTypes) != std::find_if(std::begin(compoundTypes),
+                std::end(compoundTypes), [&s](const auto& p) { return p.first == s; });
+    }
 };
 
 template <typename ... U>
