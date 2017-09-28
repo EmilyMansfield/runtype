@@ -204,12 +204,10 @@ public:
 
     CompoundInstance(const CompoundInstance<R>& rhs) : type_(rhs.type_) {
         for (std::size_t i = 0; i < type_.members().size(); ++i) {
-            const auto& member = type_.members()[i];
-            if (R::isBasicType(member.type)) {
-                auto mPtr = dynamic_cast<typename R::BasicType*>(rhs.members_[i].get());
+            if (auto mPtr = dynamic_cast<typename R::BasicType*>(rhs.members_[i].get())) {
                 members_.emplace_back(std::make_unique<typename R::BasicType>(*mPtr));
-            } else if (R::isCompoundType(member.type)) {
-                auto mPtr = dynamic_cast<CompoundInstance<R>*>(rhs.members_[i].get());
+            }
+            else if(auto mPtr = dynamic_cast<CompoundInstance<R>*>(rhs.members_[i].get())) {
                 members_.emplace_back(std::make_unique<CompoundInstance<R>>(*mPtr));
             } else {
                 throw std::runtime_error("No such type");
