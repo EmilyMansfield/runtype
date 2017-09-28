@@ -59,6 +59,9 @@ namespace detail {
         virtual std::ostream& write(std::ostream&) const = 0;
         virtual std::istream& read(std::istream&) = 0;
         virtual ~TypeInstance() {}
+        virtual const TypeInstance& operator()(const std::string&) const {
+            throw std::runtime_error("Not a compound type");
+        }
     };
 
 } // namespace detail
@@ -96,6 +99,9 @@ public:
     template <typename T>
     Basic(const T& rhs) : v_(rhs) {}
 
+    Basic(const detail::TypeInstance& rhs)
+        : Basic(dynamic_cast<const Basic<R, U...>&>(rhs)) {}
+
     // Write current value to a stream
     std::ostream& write(std::ostream& os) const {
         std::visit([&os](auto&& arg) { os << arg; }, v_);
@@ -113,7 +119,7 @@ public:
     // throws std::bad_variant_access if the currently stored value is
     // not of type T
     template <typename T>
-    auto get() {
+    const T& get() const {
         return std::get<T>(v_);
     }
 
@@ -180,11 +186,44 @@ class CompoundInstance : public detail::TypeInstance {
     using Resolver = R;
     const CompoundType& type_;
     std::vector<member_type> members_;
+
+private:
+
+    const detail::TypeInstance& get(const std::string& name) const {
+        auto it = std::find_if(std::begin(type_.members()),
+                std::end(type_.members()),
+                [&name](const CompoundType::Member& m) { return m.name == name; });
+        if (it != std::end(type_.members())) {
+            return *members_[it - std::begin(type_.members())];
+        } else {
+            throw std::runtime_error("No such member");
+        }
+    }
+
 public:
+
+    CompoundInstance(const CompoundInstance<R>& rhs) : type_(rhs.type_) {
+        for (std::size_t i = 0; i < type_.members().size(); ++i) {
+            const auto& member = type_.members()[i];
+            if (R::isBasicType(member.type)) {
+                auto mPtr = dynamic_cast<typename R::BasicType*>(rhs.members_[i].get());
+                members_.emplace_back(std::make_unique<typename R::BasicType>(*mPtr));
+            } else if (R::isCompoundType(member.type)) {
+                auto mPtr = dynamic_cast<CompoundInstance<R>*>(rhs.members_[i].get());
+                members_.emplace_back(std::make_unique<CompoundInstance<R>>(*mPtr));
+            } else {
+                throw std::runtime_error("No such type");
+            }
+        }
+    }
+
     CompoundInstance(const std::string& type, std::istream& is)
         : type_(Resolver::resolveCompound(type)) {
         read(is);
     }
+
+    CompoundInstance(const detail::TypeInstance& rhs)
+        : CompoundInstance(dynamic_cast<const CompoundInstance<R>&>(rhs)) {}
 
     std::ostream& write(std::ostream& os) const {
         for (const auto& member : members_) {
@@ -208,7 +247,21 @@ public:
         }
         return is;
     }
+
+    const detail::TypeInstance& operator()(const std::string& name) const {
+        return get(name);
+    }
 };
+
+template <typename R>
+std::ostream& operator<<(std::ostream& os, const CompoundInstance<R>& x) {
+    return x.write(os);
+}
+
+template <typename R>
+std::istream& operator>>(std::istream& is, CompoundInstance<R>& x) {
+    return x.read(is);
+}
 
 // If B is a Basic<R, U...>, then construct a type map mapping the given
 // types to the U...
