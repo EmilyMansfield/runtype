@@ -154,19 +154,20 @@ class CompoundInstance;
 class CompoundType {
 public:
     struct Member {
-        std::string name;
         std::string type;
     };
 
 private:
     std::string name_;
-    const std::vector<Member> members_;
+    using container_type = std::map<std::string, Member>;
+    const container_type members_;
 
 public:
-    CompoundType(const std::string& name, std::initializer_list<Member> l)
+    CompoundType(const std::string& name,
+            std::initializer_list<container_type::value_type> l)
         : name_(name), members_(l) {}
 
-    const std::vector<Member>& members() const {
+    const std::map<std::string, Member>& members() const {
         return members_;
     }
 
@@ -185,30 +186,16 @@ class CompoundInstance : public detail::TypeInstance {
     using member_type = std::unique_ptr<detail::TypeInstance>;
     using Resolver = R;
     const CompoundType& type_;
-    std::vector<member_type> members_;
-
-private:
-
-    const detail::TypeInstance& get(const std::string& name) const {
-        auto it = std::find_if(std::begin(type_.members()),
-                std::end(type_.members()),
-                [&name](const CompoundType::Member& m) { return m.name == name; });
-        if (it != std::end(type_.members())) {
-            return *members_[it - std::begin(type_.members())];
-        } else {
-            throw std::runtime_error("No such member");
-        }
-    }
+    std::map<std::string, member_type> members_;
 
 public:
 
     CompoundInstance(const CompoundInstance<R>& rhs) : type_(rhs.type_) {
-        for (std::size_t i = 0; i < type_.members().size(); ++i) {
-            if (auto mPtr = dynamic_cast<typename R::BasicType*>(rhs.members_[i].get())) {
-                members_.emplace_back(std::make_unique<typename R::BasicType>(*mPtr));
-            }
-            else if(auto mPtr = dynamic_cast<CompoundInstance<R>*>(rhs.members_[i].get())) {
-                members_.emplace_back(std::make_unique<CompoundInstance<R>>(*mPtr));
+        for (const auto& [name, m] : rhs.members_) {
+            if (auto mPtr = dynamic_cast<typename R::BasicType*>(m.get())) {
+                members_.emplace(name, std::make_unique<typename R::BasicType>(*mPtr));
+            } else if (auto mPtr = dynamic_cast<CompoundInstance<R>*>(m.get())) {
+                members_.emplace(name, std::make_unique<CompoundInstance<R>>(*mPtr));
             } else {
                 throw std::runtime_error("No such type");
             }
@@ -224,21 +211,20 @@ public:
         : CompoundInstance(dynamic_cast<const CompoundInstance<R>&>(rhs)) {}
 
     std::ostream& write(std::ostream& os) const {
-        for (const auto& member : members_) {
-            member->write(os);
+        for (const auto& m : members_) {
+            m.second->write(os);
         }
         return os;
     }
 
     std::istream& read(std::istream& is) {
-        for (std::size_t i = 0; i < type_.members().size(); ++i) {
-            const auto& member = type_.members()[i];
+        for (const auto& [name, member] : type_.members()) {
             if (R::isBasicType(member.type)) {
-                members_.emplace_back(std::make_unique<typename R::BasicType>(
-                            R::resolveBasic(member.type)(is)));
+                members_[name] = std::make_unique<typename R::BasicType>(
+                        R::resolveBasic(member.type)(is));
             } else if (R::isCompoundType(member.type)) {
-                members_.emplace_back(std::make_unique<CompoundInstance<R>>(
-                            R::resolveCompound(member.type).template create<R>(is)));
+                members_[name] = std::make_unique<CompoundInstance<R>>(
+                        R::resolveCompound(member.type).template create<R>(is));
             } else {
                 throw std::runtime_error("No such type");
             }
@@ -247,7 +233,7 @@ public:
     }
 
     const detail::TypeInstance& operator()(const std::string& name) const {
-        return get(name);
+        return *members_.at(name);
     }
 };
 
