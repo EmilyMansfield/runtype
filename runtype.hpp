@@ -2,6 +2,7 @@
 #define RUNTYPE_HPP
 
 #include <functional>
+#include <algorithm>
 #include <variant>
 #include <memory>
 #include <list>
@@ -61,6 +62,242 @@ namespace detail {
         virtual ~TypeInstance() {}
         virtual const TypeInstance& operator()(const std::string&) const {
             throw std::runtime_error("Not a compound type");
+        }
+    };
+
+    template <typename Key, typename T, typename Hash,
+             typename KeyEqual, typename Allocator>
+    class OrderPreservingMap;
+
+    template <bool IsConst, typename Key, typename T, typename Hash,
+             typename KeyEqual, typename Allocator>
+    class OrderPreservingMapIteratorImpl {
+        using map_type = std::unordered_map<Key, T, Hash, KeyEqual, Allocator>;
+        using vec_type = std::vector<typename map_type::iterator>;
+        using vec_iterator = typename std::conditional<IsConst,
+              typename vec_type::const_iterator,
+              typename vec_type::iterator>::type;
+        using order_type = typename std::conditional<IsConst,
+              const vec_type&, vec_type&>::type;
+        order_type order_;
+        vec_iterator it_;
+
+    public:
+        using difference_type = std::ptrdiff_t;
+        using value_type = typename std::conditional<IsConst,
+              const typename map_type::value_type,
+              typename map_type::value_type>::type;
+        using pointer = typename std::conditional<IsConst,
+              typename map_type::const_pointer,
+              typename map_type::pointer>::type;
+        using reference = typename std::conditional<IsConst,
+              typename map_type::const_reference,
+              typename map_type::reference>::type;
+        using iterator_category = std::bidirectional_iterator_tag;
+
+        //OrderPreservingMapIteratorImpl() = default;
+        OrderPreservingMapIteratorImpl(order_type order, vec_iterator it)
+            : order_(order), it_(it) {}
+        OrderPreservingMapIteratorImpl(order_type order,
+                const typename map_type::iterator& it)
+            : order_(order) {
+            const auto begin = std::begin(order_);
+            const auto end = std::end(order_);
+            it_ = std::find(begin, end, it);
+        }
+
+        reference operator*() {
+            return **it_;
+        }
+
+        reference operator*() const {
+            return **it_;
+        }
+
+        typename map_type::iterator operator->() {
+            return *it_;
+        }
+
+        typename map_type::iterator operator->() const {
+            return *it_;
+        }
+
+        OrderPreservingMapIteratorImpl& operator++() {
+            ++it_;
+            return *this;
+        }
+        OrderPreservingMapIteratorImpl operator++(int) {
+            auto tmp(*this);
+            operator++();
+            return tmp;
+        }
+        OrderPreservingMapIteratorImpl& operator--() {
+            --it_;
+            return *this;
+        }
+        OrderPreservingMapIteratorImpl operator--(int) {
+            auto tmp(*this);
+            operator--();
+            return tmp;
+        }
+
+
+        bool operator==(const OrderPreservingMapIteratorImpl& rhs) {
+            return it_ == rhs.it_;
+        }
+        bool operator!=(const OrderPreservingMapIteratorImpl& rhs) {
+            return !operator==(rhs);
+        }
+    };
+
+    template <typename Key, typename T, typename Hash, typename KeyEqual, typename Allocator>
+    using OrderPreservingMapIterator = OrderPreservingMapIteratorImpl<false, Key, T, Hash, KeyEqual, Allocator>;
+
+    template <typename Key, typename T, typename Hash, typename KeyEqual, typename Allocator>
+    using OrderPreservingMapConstIterator = OrderPreservingMapIteratorImpl<true, Key, T, Hash, KeyEqual, Allocator>;
+
+    template <typename Key,
+             typename T,
+             typename Hash = std::hash<Key>,
+             typename KeyEqual = std::equal_to<Key>,
+             typename Allocator = std::allocator<std::pair<const Key, T>>>
+    class OrderPreservingMap {
+        using map_type = std::unordered_map<Key, T, Hash, KeyEqual, Allocator>;
+        using vec_type = std::vector<typename map_type::iterator>;
+        using map_iterator = typename map_type::iterator;
+        using const_map_iterator = typename map_type::const_iterator;
+        // TODO: Temporary hack before the iterator gets written
+        //using OrderPreservingMapIterator = map_iterator;
+
+    public:
+        using key_type = Key;
+        using mapped_type = T;
+        using value_type = std::pair<const Key, T>;
+        using size_type = typename map_type::size_type;
+        using difference_type = typename map_type::difference_type;
+        using hasher = Hash;
+        using key_equal = KeyEqual;
+        using allocator_type = Allocator;
+        using reference = value_type&;
+        using const_reference = const value_type&;
+        using pointer = typename std::allocator_traits<Allocator>::pointer;
+        using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
+        using iterator = OrderPreservingMapIterator<Key, T, Hash, KeyEqual, Allocator>;
+        using const_iterator = OrderPreservingMapConstIterator<Key, T, Hash, KeyEqual, Allocator>;
+
+    private:
+        map_type map_;
+        vec_type vec_;
+
+        // Insert the iterator into the tracker if the bool is true,
+        // otherwise do nothing
+        inline void track_insert(const std::pair<map_iterator, bool>& p) {
+            auto [it, success] = p;
+            if (success) vec_.push_back(it);
+        }
+
+        // Convert an unordered_map iterator/bool pair to an ordered one
+        inline std::pair<iterator, bool>
+        order_iterator(const std::pair<map_iterator, bool>& p) {
+            return std::make_pair(iterator(vec_, p.first), p.second);
+        }
+
+    public:
+
+        OrderPreservingMap() = default;
+
+        OrderPreservingMap(std::initializer_list<value_type> init,
+                size_type bucket_count = 0,
+                const hasher& hash = hasher(),
+                const key_equal& equal = key_equal(),
+                const allocator_type& alloc = allocator_type())
+            : map_(bucket_count, hash, equal, alloc) {
+            for (const auto x : init) {
+                emplace(x);
+            }
+        }
+
+        iterator begin() {
+            return iterator(vec_, std::begin(vec_));
+        }
+
+        iterator end() {
+            return iterator(vec_, std::end(vec_));
+        }
+
+        const_iterator begin() const {
+            return const_iterator(vec_, std::cbegin(vec_));
+        }
+
+        const_iterator end() const {
+            return const_iterator(vec_, std::cend(vec_));
+        }
+
+        bool empty() const noexcept {
+            return map_.empty();
+        }
+
+        size_type size() const noexcept {
+            return map_.size();
+        }
+
+        size_type max_size() const noexcept {
+            return map_.max_size();
+        }
+
+        void clear() noexcept {
+            map_.clear();
+            vec_.clear();
+        }
+
+        std::pair<iterator, bool> insert(const value_type& value) {
+            auto p = map_.insert(value);
+            track_insert(p);
+            return order_iterator(p);
+        }
+
+        template <typename P>
+        std::pair<iterator, bool> insert(P&& value) {
+            auto p = map_.insert(std::forward<P>(value));
+            track_insert(p);
+            return order_iterator(p);
+        }
+
+        template <typename ... Args>
+        std::pair<iterator, bool> try_emplace(const key_type& k, Args&& ... args) {
+            auto p = map_.try_emplace(k, std::forward<Args>(args) ...);
+            track_insert(p);
+            return order_iterator(p);
+        }
+
+        template <typename ... Args>
+        std::pair<iterator, bool> try_emplace(key_type&& k, Args&& ... args) {
+            auto p = map_.try_emplace(std::forward<key_type>(k), std::forward<Args>(args) ...);
+            track_insert(p);
+            return order_iterator(p);
+        }
+
+        template <typename ... Args>
+        std::pair<iterator, bool> emplace(Args&& ... args) {
+            auto p = map_.emplace(std::forward<Args>(args) ...);
+            track_insert(p);
+            return order_iterator(p);
+        }
+
+        T& at(const key_type& key) {
+            return map_.at(key);
+        }
+
+        const T& at(const key_type& key) const {
+            return map_.at(key);
+        }
+
+        T& operator[](const key_type& key) {
+            return try_emplace(key).first->second;
+        }
+
+        T& operator[](key_type&& key) {
+            return try_emplace(std::move(key)).first->second;
         }
     };
 
@@ -159,7 +396,7 @@ public:
 
 private:
     std::string name_;
-    using container_type = std::map<std::string, Member>;
+    using container_type = detail::OrderPreservingMap<std::string, Member>;
     const container_type members_;
 
 public:
@@ -167,7 +404,7 @@ public:
             std::initializer_list<container_type::value_type> l)
         : name_(name), members_(l) {}
 
-    const std::map<std::string, Member>& members() const {
+    const container_type& members() const {
         return members_;
     }
 
@@ -184,9 +421,10 @@ public:
 template <typename R>
 class CompoundInstance : public detail::TypeInstance {
     using member_type = std::unique_ptr<detail::TypeInstance>;
+    using container_type = detail::OrderPreservingMap<std::string, member_type>;
     using Resolver = R;
     const CompoundType& type_;
-    std::map<std::string, member_type> members_;
+    container_type members_;
 
 public:
 
