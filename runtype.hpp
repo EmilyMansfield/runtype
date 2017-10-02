@@ -55,6 +55,7 @@ namespace detail {
         return m;
     }
 
+    // All type variants (Basic, Compound etc) should derive this
     class TypeInstance {
     public:
         virtual std::ostream& write(std::ostream&) const = 0;
@@ -69,18 +70,38 @@ namespace detail {
              typename KeyEqual, typename Allocator>
     class OrderPreservingMap;
 
+    // Bidirectional iterator class for the OrderPreservingMap.
+    // Templated over a boolean to give const and nonconst iterators in
+    // one class.
     template <bool IsConst, typename Key, typename T, typename Hash,
              typename KeyEqual, typename Allocator>
     class OrderPreservingMapIteratorImpl {
+        friend class OrderPreservingMap<Key, T, Hash, KeyEqual, Allocator>;
+
         using map_type = std::unordered_map<Key, T, Hash, KeyEqual, Allocator>;
         using vec_type = std::vector<typename map_type::iterator>;
         using vec_iterator = typename std::conditional<IsConst,
               typename vec_type::const_iterator,
               typename vec_type::iterator>::type;
+        // This should really be const& all the time, since an iterator
+        // cannot modify the order. However, std::begin(order_)
+        // will always return a const_iterator if order_ is const&.
+        // This makes the O(n) constructor awkward, requiring
+        // const_casts or preventing the use of std::find (no conversion
+        // from the returned const_iterator to an iterator even with
+        // const_cast; const_iterator != const iterator.
+        // PRs welcome.
         using order_type = typename std::conditional<IsConst,
               const vec_type&, vec_type&>::type;
+        // The ordering is kept by the underlying map not the iterator;
+        // each iterator needs to be bound to a map which provides the
+        // ordering used -- and ++ etc
         order_type order_;
         vec_iterator it_;
+
+        // O(1) creation at the given point in the ordering.
+        OrderPreservingMapIteratorImpl(order_type order, vec_iterator it)
+            : order_(order), it_(it) {}
 
     public:
         using difference_type = std::ptrdiff_t;
@@ -95,18 +116,15 @@ namespace detail {
               typename map_type::reference>::type;
         using iterator_category = std::bidirectional_iterator_tag;
 
-        //OrderPreservingMapIteratorImpl() = default;
-        OrderPreservingMapIteratorImpl(order_type order, vec_iterator it)
-            : order_(order), it_(it) {}
+        // O(n) creation using a map iterator, e.g. if the key is known
         OrderPreservingMapIteratorImpl(order_type order,
                 const typename map_type::iterator& it)
             : order_(order) {
-            const auto begin = std::begin(order_);
-            const auto end = std::end(order_);
-            it_ = std::find(begin, end, it);
+            it_ = std::find(std::begin(order_), std::end(order_), it);
         }
 
         reference operator*() {
+            // it_ is an iterator to an iterator
             return **it_;
         }
 
@@ -115,6 +133,8 @@ namespace detail {
         }
 
         typename map_type::iterator operator->() {
+            // Pass through to the map iterator's -> operator to get
+            // member access for free
             return *it_;
         }
 
@@ -126,25 +146,28 @@ namespace detail {
             ++it_;
             return *this;
         }
+
         OrderPreservingMapIteratorImpl operator++(int) {
             auto tmp(*this);
             operator++();
             return tmp;
         }
+
         OrderPreservingMapIteratorImpl& operator--() {
             --it_;
             return *this;
         }
+
         OrderPreservingMapIteratorImpl operator--(int) {
             auto tmp(*this);
             operator--();
             return tmp;
         }
 
-
         bool operator==(const OrderPreservingMapIteratorImpl& rhs) {
             return it_ == rhs.it_;
         }
+
         bool operator!=(const OrderPreservingMapIteratorImpl& rhs) {
             return !operator==(rhs);
         }
@@ -156,6 +179,13 @@ namespace detail {
     template <typename Key, typename T, typename Hash, typename KeyEqual, typename Allocator>
     using OrderPreservingMapConstIterator = OrderPreservingMapIteratorImpl<true, Key, T, Hash, KeyEqual, Allocator>;
 
+    // std::map sorts with < on the key by default, and
+    // std::unordered_map is well, unordered, but we need to iterate
+    // over the keys in insertion order. With std::map this necessitates
+    // including order information in the keys, which leaves the
+    // handling to the user(!). This abstracts it away by
+    // providing an interface matching std::unordered_map with (average)
+    // O(1) lookup, but with iteration in insertion order.
     template <typename Key,
              typename T,
              typename Hash = std::hash<Key>,
@@ -166,8 +196,6 @@ namespace detail {
         using vec_type = std::vector<typename map_type::iterator>;
         using map_iterator = typename map_type::iterator;
         using const_map_iterator = typename map_type::const_iterator;
-        // TODO: Temporary hack before the iterator gets written
-        //using OrderPreservingMapIterator = map_iterator;
 
     public:
         using key_type = Key;
@@ -187,6 +215,8 @@ namespace detail {
 
     private:
         map_type map_;
+        // The iterator at index i points is the (i+1)-th element that
+        // was added
         vec_type vec_;
 
         // Insert the iterator into the tracker if the bool is true,
@@ -206,13 +236,14 @@ namespace detail {
 
         OrderPreservingMap() = default;
 
+        // Construct from an initializer_list of key,value pairs
         OrderPreservingMap(std::initializer_list<value_type> init,
                 size_type bucket_count = 0,
                 const hasher& hash = hasher(),
                 const key_equal& equal = key_equal(),
                 const allocator_type& alloc = allocator_type())
             : map_(bucket_count, hash, equal, alloc) {
-            for (const auto x : init) {
+            for (const auto& x : init) {
                 emplace(x);
             }
         }
@@ -293,6 +324,7 @@ namespace detail {
         }
 
         T& operator[](const key_type& key) {
+            // Thanks cppreference for the implementation
             return try_emplace(key).first->second;
         }
 
