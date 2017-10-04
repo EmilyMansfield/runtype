@@ -346,6 +346,7 @@ namespace detail {
 //
 // The parameter pack U contains the possible types that can be stored.
 // There are the following requirements on parameters in U:
+//   - U shall contain no duplicate types
 //   - Any template parameter T used in the interface must be an
 //     instance of one of the Us, although this should be caught at
 //     compile time.
