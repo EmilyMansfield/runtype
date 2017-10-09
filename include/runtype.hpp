@@ -237,6 +237,11 @@ namespace detail {
     public:
 
         OrderPreservingMap() = default;
+        OrderPreservingMap(const OrderPreservingMap& rhs) {
+            for (const auto& x : rhs) {
+                emplace(x);
+            }
+        }
 
         // Construct from an initializer_list of key,value pairs
         OrderPreservingMap(std::initializer_list<value_type> init,
@@ -339,7 +344,15 @@ namespace detail {
                 const OrderPreservingMap& lhs,
                 const OrderPreservingMap& rhs)
         {
-            return lhs.size() == rhs.size() && lhs.map_ == rhs.map_ && lhs.vec_ == rhs.vec_;
+            if (lhs.size() != rhs.size()) return false;
+            for (auto lhs_it = std::begin(lhs), rhs_it = std::begin(rhs);
+                    lhs_it != std::end(lhs) && rhs_it != std::end(rhs);
+                    ++lhs_it, ++rhs_it) {
+                if (lhs_it->first != rhs_it->first || lhs_it->second != lhs_it->second) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         friend inline bool operator!=(
