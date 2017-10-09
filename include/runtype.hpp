@@ -3,6 +3,8 @@
 
 #include <functional>
 #include <algorithm>
+#include <istream>
+#include <ostream>
 #include <variant>
 #include <memory>
 #include <list>
@@ -117,7 +119,7 @@ namespace detail {
         using iterator_category = std::bidirectional_iterator_tag;
 
         // O(n) creation using a map iterator, e.g. if the key is known
-        OrderPreservingMapIteratorImpl(const vec_type& order,
+        OrderPreservingMapIteratorImpl(order_type order,
                 const typename map_type::iterator& it)
             : order_(order) {
             it_ = std::find(std::begin(order_), std::end(order_), it);
@@ -331,6 +333,21 @@ namespace detail {
         T& operator[](key_type&& key) {
             return try_emplace(std::move(key)).first->second;
         }
+
+        // Equality respects insertion order
+        friend inline bool operator==(
+                const OrderPreservingMap& lhs,
+                const OrderPreservingMap& rhs)
+        {
+            return lhs.size() == rhs.size() && lhs.map_ == rhs.map_ && lhs.vec_ == rhs.vec_;
+        }
+
+        friend inline bool operator!=(
+                const OrderPreservingMap& lhs,
+                const OrderPreservingMap& rhs)
+        {
+            return !operator==(lhs, rhs);
+        }
     };
 
 } // namespace detail
@@ -346,6 +363,7 @@ namespace detail {
 //
 // The parameter pack U contains the possible types that can be stored.
 // There are the following requirements on parameters in U:
+//   - U shall contain no duplicate types
 //   - Any template parameter T used in the interface must be an
 //     instance of one of the Us, although this should be caught at
 //     compile time.
@@ -447,6 +465,22 @@ public:
     template <typename R>
     CompoundInstance<R> create(std::istream& is) const {
         return CompoundInstance<R>(name_, is);
+    }
+
+    friend inline bool operator==(const CompoundType& lhs, const CompoundType& rhs) {
+        return lhs.name() == rhs.name() && lhs.members_ == rhs.members_;
+    }
+
+    friend inline bool operator!=(const CompoundType& lhs, const CompoundType& rhs) {
+        return !operator==(lhs, rhs);
+    }
+
+    friend inline bool operator==(const Member& lhs, const Member& rhs) {
+        return lhs.type == rhs.type;
+    }
+
+    friend inline bool operator!=(const Member& lhs, const Member& rhs) {
+        return !operator==(lhs, rhs);
     }
 };
 
