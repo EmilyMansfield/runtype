@@ -333,6 +333,21 @@ namespace detail {
         T& operator[](key_type&& key) {
             return try_emplace(std::move(key)).first->second;
         }
+
+        // Equality respects insertion order
+        friend inline bool operator==(
+                const OrderPreservingMap& lhs,
+                const OrderPreservingMap& rhs)
+        {
+            return lhs.size() == rhs.size() && lhs.map_ == rhs.map_ && lhs.vec_ == rhs.vec_;
+        }
+
+        friend inline bool operator!=(
+                const OrderPreservingMap& lhs,
+                const OrderPreservingMap& rhs)
+        {
+            return !operator==(lhs, rhs);
+        }
     };
 
 } // namespace detail
@@ -450,6 +465,22 @@ public:
     template <typename R>
     CompoundInstance<R> create(std::istream& is) const {
         return CompoundInstance<R>(name_, is);
+    }
+
+    friend inline bool operator==(const CompoundType& lhs, const CompoundType& rhs) {
+        return lhs.name() == rhs.name() && lhs.members_ == rhs.members_;
+    }
+
+    friend inline bool operator!=(const CompoundType& lhs, const CompoundType& rhs) {
+        return !operator==(lhs, rhs);
+    }
+
+    friend inline bool operator==(const Member& lhs, const Member& rhs) {
+        return lhs.type == rhs.type;
+    }
+
+    friend inline bool operator!=(const Member& lhs, const Member& rhs) {
+        return !operator==(lhs, rhs);
     }
 };
 
