@@ -33,16 +33,14 @@ constexpr void registerType(TypeMap_t<S>& typeMap, const std::string& name) {
 // Base case for makeTypeMap recursion
 // Register the remaining type
 template <typename B, typename Last>
-constexpr inline void makeTypeMapImpl(
-    TypeMap_t<B>& m, std::list<std::string> types) {
+inline void makeTypeMapImpl(TypeMap_t<B>& m, std::list<std::string> types) {
     registerType<Last>(m, *std::begin(types));
 }
 
 // Induction step for makeTypeMap recursion
 // Register the next type, then register the remaining ones
 template <typename B, typename First, typename Second, typename... Rest>
-constexpr inline void makeTypeMapImpl(
-    TypeMap_t<B>& m, std::list<std::string> types) {
+inline void makeTypeMapImpl(TypeMap_t<B>& m, std::list<std::string> types) {
     makeTypeMapImpl<B, First>(m, types);
     types.pop_front();
     makeTypeMapImpl<B, Second, Rest...>(m, types);
@@ -51,7 +49,7 @@ constexpr inline void makeTypeMapImpl(
 // Constructs a new TypeMap_t with keys given by types and values
 // correspoing to the types in the Pack
 template <typename R, typename... U>
-constexpr inline TypeMap_t<Basic<R, U...>> makeTypeMap(
+inline TypeMap_t<Basic<R, U...>> makeTypeMap(
     detail::Pack<U...>, std::list<std::string> types) {
     TypeMap_t<Basic<R, U...>> m;
     detail::makeTypeMapImpl<Basic<R, U...>, U...>(m, types);
@@ -578,8 +576,8 @@ public:
         return is;
     }
 
-    constexpr const detail::TypeInstance& operator()(
-        const std::string& name) const {
+    const detail::TypeInstance& operator()(
+        const std::string& name) const override {
         return *members_.at(name);
     }
 };
@@ -597,7 +595,7 @@ std::istream& operator>>(std::istream& is, CompoundInstance<R>& x) {
 // If B is a Basic<R, U...>, then construct a type map mapping the given
 // types to the U...
 template <typename B>
-constexpr inline TypeMap_t<B> makeTypeMap(std::list<std::string> types) {
+inline TypeMap_t<B> makeTypeMap(std::list<std::string> types) {
     return detail::makeTypeMap<typename B::Resolver>(
         typename B::Types(), types);
 }
@@ -629,7 +627,7 @@ public:
         return basicTypes.at(s);
     }
 
-    constexpr static void registerCompoundType(CompoundType type) {
+    static void registerCompoundType(CompoundType type) {
         if (!isBasicType(type.name())) {
             compoundTypes.emplace(type.name(), type);
         } else {
