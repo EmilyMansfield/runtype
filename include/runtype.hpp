@@ -25,7 +25,7 @@ template <typename... U> struct Pack {};
 // Add a new type to a TypeMap_t unless the name already exists, in
 // which case do nothing
 template <typename T, typename S>
-void registerType(TypeMap_t<S>& typeMap, const std::string& name) {
+constexpr void registerType(TypeMap_t<S>& typeMap, const std::string& name) {
     typeMap.try_emplace(
         name, [](std::istream& is) { return S::template create<T>(is); });
 }
@@ -33,14 +33,16 @@ void registerType(TypeMap_t<S>& typeMap, const std::string& name) {
 // Base case for makeTypeMap recursion
 // Register the remaining type
 template <typename B, typename Last>
-inline void makeTypeMapImpl(TypeMap_t<B>& m, std::list<std::string> types) {
+constexpr inline void makeTypeMapImpl(
+    TypeMap_t<B>& m, std::list<std::string> types) {
     registerType<Last>(m, *std::begin(types));
 }
 
 // Induction step for makeTypeMap recursion
 // Register the next type, then register the remaining ones
 template <typename B, typename First, typename Second, typename... Rest>
-inline void makeTypeMapImpl(TypeMap_t<B>& m, std::list<std::string> types) {
+constexpr inline void makeTypeMapImpl(
+    TypeMap_t<B>& m, std::list<std::string> types) {
     makeTypeMapImpl<B, First>(m, types);
     types.pop_front();
     makeTypeMapImpl<B, Second, Rest...>(m, types);
@@ -49,7 +51,7 @@ inline void makeTypeMapImpl(TypeMap_t<B>& m, std::list<std::string> types) {
 // Constructs a new TypeMap_t with keys given by types and values
 // correspoing to the types in the Pack
 template <typename R, typename... U>
-inline TypeMap_t<Basic<R, U...>> makeTypeMap(
+constexpr inline TypeMap_t<Basic<R, U...>> makeTypeMap(
     detail::Pack<U...>, std::list<std::string> types) {
     TypeMap_t<Basic<R, U...>> m;
     detail::makeTypeMapImpl<Basic<R, U...>, U...>(m, types);
@@ -109,7 +111,7 @@ class OrderPreservingMapIteratorImpl {
     vec_iterator it_;
 
     // O(1) creation at the given point in the ordering.
-    OrderPreservingMapIteratorImpl(order_type order, vec_iterator it)
+    constexpr OrderPreservingMapIteratorImpl(order_type order, vec_iterator it)
         : order_(order), it_(it) {
     }
 
@@ -127,58 +129,58 @@ public:
     using iterator_category = std::bidirectional_iterator_tag;
 
     // O(n) creation using a map iterator, e.g. if the key is known
-    OrderPreservingMapIteratorImpl(
+    constexpr OrderPreservingMapIteratorImpl(
         order_type order, const typename map_type::iterator& it)
         : order_(order) {
         it_ = std::find(std::begin(order_), std::end(order_), it);
     }
 
-    reference operator*() {
+    constexpr reference operator*() {
         // it_ is an iterator to an iterator
         return **it_;
     }
 
-    reference operator*() const {
+    constexpr reference operator*() const {
         return **it_;
     }
 
-    typename map_type::iterator operator->() {
+    constexpr typename map_type::iterator operator->() {
         // Pass through to the map iterator's -> operator to get
         // member access for free
         return *it_;
     }
 
-    typename map_type::iterator operator->() const {
+    constexpr typename map_type::iterator operator->() const {
         return *it_;
     }
 
-    OrderPreservingMapIteratorImpl& operator++() {
+    constexpr OrderPreservingMapIteratorImpl& operator++() {
         ++it_;
         return *this;
     }
 
-    OrderPreservingMapIteratorImpl operator++(int) {
+    constexpr OrderPreservingMapIteratorImpl operator++(int) {
         auto tmp(*this);
         operator++();
         return tmp;
     }
 
-    OrderPreservingMapIteratorImpl& operator--() {
+    constexpr OrderPreservingMapIteratorImpl& operator--() {
         --it_;
         return *this;
     }
 
-    OrderPreservingMapIteratorImpl operator--(int) {
+    constexpr OrderPreservingMapIteratorImpl operator--(int) {
         auto tmp(*this);
         operator--();
         return tmp;
     }
 
-    bool operator==(const OrderPreservingMapIteratorImpl& rhs) {
+    constexpr bool operator==(const OrderPreservingMapIteratorImpl& rhs) {
         return it_ == rhs.it_;
     }
 
-    bool operator!=(const OrderPreservingMapIteratorImpl& rhs) {
+    constexpr bool operator!=(const OrderPreservingMapIteratorImpl& rhs) {
         return !operator==(rhs);
     }
 };
@@ -244,28 +246,28 @@ private:
 
     // Insert the iterator into the tracker if the bool is true,
     // otherwise do nothing
-    inline void track_insert(const std::pair<map_iterator, bool>& p) {
+    constexpr inline void track_insert(const std::pair<map_iterator, bool>& p) {
         auto[it, success] = p;
         if (success)
             vec_.push_back(it);
     }
 
     // Convert an unordered_map iterator/bool pair to an ordered one
-    inline std::pair<iterator, bool> order_iterator(
+    constexpr inline std::pair<iterator, bool> order_iterator(
         const std::pair<map_iterator, bool>& p) {
         return std::make_pair(iterator(vec_, p.first), p.second);
     }
 
 public:
-    OrderPreservingMap() = default;
-    OrderPreservingMap(const OrderPreservingMap& rhs) {
+    constexpr OrderPreservingMap() = default;
+    constexpr OrderPreservingMap(const OrderPreservingMap& rhs) {
         for (const auto& x : rhs) {
             emplace(x);
         }
     }
 
     // Construct from an initializer_list of key,value pairs
-    OrderPreservingMap(std::initializer_list<value_type> init,
+    constexpr OrderPreservingMap(std::initializer_list<value_type> init,
         size_type bucket_count = 0,
         const hasher& hash = hasher(),
         const key_equal& equal = key_equal(),
@@ -276,60 +278,63 @@ public:
         }
     }
 
-    iterator begin() {
+    constexpr iterator begin() {
         return iterator(vec_, std::begin(vec_));
     }
 
-    iterator end() {
+    constexpr iterator end() {
         return iterator(vec_, std::end(vec_));
     }
 
-    const_iterator begin() const {
+    constexpr const_iterator begin() const {
         return const_iterator(vec_, std::cbegin(vec_));
     }
 
-    const_iterator end() const {
+    constexpr const_iterator end() const {
         return const_iterator(vec_, std::cend(vec_));
     }
 
-    bool empty() const noexcept {
+    constexpr bool empty() const noexcept {
         return map_.empty();
     }
 
-    size_type size() const noexcept {
+    constexpr size_type size() const noexcept {
         return map_.size();
     }
 
-    size_type max_size() const noexcept {
+    constexpr size_type max_size() const noexcept {
         return map_.max_size();
     }
 
-    void clear() noexcept {
+    constexpr void clear() noexcept {
         map_.clear();
         vec_.clear();
     }
 
-    std::pair<iterator, bool> insert(const value_type& value) {
+    constexpr std::pair<iterator, bool> insert(const value_type& value) {
         auto p = map_.insert(value);
         track_insert(p);
         return order_iterator(p);
     }
 
-    template <typename P> std::pair<iterator, bool> insert(P&& value) {
+    template <typename P>
+    constexpr std::pair<iterator, bool> insert(P&& value) {
         auto p = map_.insert(std::forward<P>(value));
         track_insert(p);
         return order_iterator(p);
     }
 
     template <typename... Args>
-    std::pair<iterator, bool> try_emplace(const key_type& k, Args&&... args) {
+    constexpr std::pair<iterator, bool> try_emplace(
+        const key_type& k, Args&&... args) {
         auto p = map_.try_emplace(k, std::forward<Args>(args)...);
         track_insert(p);
         return order_iterator(p);
     }
 
     template <typename... Args>
-    std::pair<iterator, bool> try_emplace(key_type&& k, Args&&... args) {
+    constexpr std::pair<iterator, bool> try_emplace(
+        key_type&& k, Args&&... args) {
         auto p = map_.try_emplace(
             std::forward<key_type>(k), std::forward<Args>(args)...);
         track_insert(p);
@@ -337,31 +342,31 @@ public:
     }
 
     template <typename... Args>
-    std::pair<iterator, bool> emplace(Args&&... args) {
+    constexpr std::pair<iterator, bool> emplace(Args&&... args) {
         auto p = map_.emplace(std::forward<Args>(args)...);
         track_insert(p);
         return order_iterator(p);
     }
 
-    T& at(const key_type& key) {
+    constexpr T& at(const key_type& key) {
         return map_.at(key);
     }
 
-    const T& at(const key_type& key) const {
+    constexpr const T& at(const key_type& key) const {
         return map_.at(key);
     }
 
-    T& operator[](const key_type& key) {
+    constexpr T& operator[](const key_type& key) {
         // Thanks cppreference for the implementation
         return try_emplace(key).first->second;
     }
 
-    T& operator[](key_type&& key) {
+    constexpr T& operator[](key_type&& key) {
         return try_emplace(std::move(key)).first->second;
     }
 
     // Equality respects insertion order
-    friend inline bool operator==(
+    friend constexpr inline bool operator==(
         const OrderPreservingMap& lhs, const OrderPreservingMap& rhs) {
         if (lhs.size() != rhs.size())
             return false;
@@ -376,7 +381,7 @@ public:
         return true;
     }
 
-    friend inline bool operator!=(
+    friend constexpr inline bool operator!=(
         const OrderPreservingMap& lhs, const OrderPreservingMap& rhs) {
         return !operator==(lhs, rhs);
     }
@@ -417,10 +422,10 @@ private:
 
 public:
     // Construct from one of the underlying types
-    template <typename T> Basic(const T& rhs) : v_(rhs) {
+    template <typename T> constexpr Basic(const T& rhs) : v_(rhs) {
     }
 
-    Basic(const detail::TypeInstance& rhs)
+    constexpr Basic(const detail::TypeInstance& rhs)
         : Basic(dynamic_cast<const Basic<R, U...>&>(rhs)) {
     }
 
@@ -440,7 +445,7 @@ public:
     // Get the underlying value
     // throws std::bad_variant_access if the currently stored value is
     // not of type T
-    template <typename T> const T& get() const {
+    template <typename T> constexpr const T& get() const {
         return std::get<T>(v_);
     }
 
@@ -487,7 +492,7 @@ public:
         : name_(name), members_(l) {
     }
 
-    const container_type& members() const {
+    constexpr const container_type& members() const {
         return members_;
     }
 
@@ -526,7 +531,8 @@ template <typename R> class CompoundInstance : public detail::TypeInstance {
     container_type members_;
 
 public:
-    CompoundInstance(const CompoundInstance<R>& rhs) : type_(rhs.type_) {
+    constexpr CompoundInstance(const CompoundInstance<R>& rhs)
+        : type_(rhs.type_) {
         for (const auto & [ name, m ] : rhs.members_) {
             if (auto mPtr = dynamic_cast<typename R::BasicType*>(m.get())) {
                 members_.emplace(
@@ -546,7 +552,7 @@ public:
         read(is);
     }
 
-    CompoundInstance(const detail::TypeInstance& rhs)
+    constexpr CompoundInstance(const detail::TypeInstance& rhs)
         : CompoundInstance(dynamic_cast<const CompoundInstance<R>&>(rhs)) {
     }
 
@@ -572,7 +578,8 @@ public:
         return is;
     }
 
-    const detail::TypeInstance& operator()(const std::string& name) const {
+    constexpr const detail::TypeInstance& operator()(
+        const std::string& name) const {
         return *members_.at(name);
     }
 };
@@ -590,7 +597,7 @@ std::istream& operator>>(std::istream& is, CompoundInstance<R>& x) {
 // If B is a Basic<R, U...>, then construct a type map mapping the given
 // types to the U...
 template <typename B>
-inline TypeMap_t<B> makeTypeMap(std::list<std::string> types) {
+constexpr inline TypeMap_t<B> makeTypeMap(std::list<std::string> types) {
     return detail::makeTypeMap<typename B::Resolver>(
         typename B::Types(), types);
 }
@@ -618,11 +625,11 @@ private:
     static CompoundMapType compoundTypes;
 
 public:
-    static auto resolveBasic(const std::string& s) {
+    constexpr static auto resolveBasic(const std::string& s) {
         return basicTypes.at(s);
     }
 
-    static void registerCompoundType(CompoundType type) {
+    constexpr static void registerCompoundType(CompoundType type) {
         if (!isBasicType(type.name())) {
             compoundTypes.emplace(type.name(), type);
         } else {
@@ -631,18 +638,18 @@ public:
         }
     }
 
-    static const CompoundType& resolveCompound(const std::string& s) {
+    constexpr static const CompoundType& resolveCompound(const std::string& s) {
         return compoundTypes.at(s);
     }
 
-    static bool isBasicType(const std::string& s) {
+    constexpr static bool isBasicType(const std::string& s) {
         return std::end(basicTypes) !=
                std::find_if(std::begin(basicTypes),
                    std::end(basicTypes),
                    [&s](const auto& p) { return p.first == s; });
     }
 
-    static bool isCompoundType(const std::string& s) {
+    constexpr static bool isCompoundType(const std::string& s) {
         return std::end(compoundTypes) !=
                std::find_if(std::begin(compoundTypes),
                    std::end(compoundTypes),
