@@ -13,7 +13,8 @@
 namespace runtype {
 
 template <typename T>
-using TypeMap_t = std::map<std::string, std::function<T(std::istream&)>>;
+using TypeMap_t =
+    std::unordered_map<std::string, std::function<T(std::istream&)>>;
 
 template <typename R, typename... U> class Basic;
 
@@ -610,7 +611,7 @@ template <typename... U> class BasicResolver {
 public:
     using BasicType = Basic<BasicResolver<U...>, U...>;
     using BasicMapType = TypeMap_t<BasicType>;
-    using CompoundMapType = std::map<std::string, CompoundType>;
+    using CompoundMapType = std::unordered_map<std::string, CompoundType>;
 
 private:
     const static BasicMapType basicTypes;
@@ -622,7 +623,12 @@ public:
     }
 
     static void registerCompoundType(CompoundType type) {
-        compoundTypes.emplace(type.name(), type);
+        if (!isBasicType(type.name())) {
+            compoundTypes.emplace(type.name(), type);
+        } else {
+            throw std::runtime_error(
+                "Cannot register a Compound with the same name as a Basic");
+        }
     }
 
     static const CompoundType& resolveCompound(const std::string& s) {
