@@ -87,8 +87,10 @@ TEST_CASE("Can make compound types", "[CompoundType]") {
     REQUIRE(multiType.members().size() == 4);
 }
 
-TEST_CASE(
-    "Can register and lookup compound types", "[BasicResolver][CompoundType]") {
+// clang-format off
+TEST_CASE("Can register and lookup compound types",
+        "[BasicResolver][CompoundType]") {
+    // clang-format on
     CompoundType emptyType("emptyType", {});
     BR::registerCompoundType(emptyType);
     REQUIRE(BR::isCompoundType("emptyType"));
