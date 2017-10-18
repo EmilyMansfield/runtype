@@ -69,59 +69,76 @@ TEST_CASE("Duplicate basic type keys are ignored", "[BasicResolver]") {
     REQUIRE(B2R::resolveBasic("b")(floatStream).get<float>() == 3.5);
 }
 
+// To avoid dependencies between test cases and to prevent accidental
+// attempts to redefine types, only use the compounds in this namespace.
+// The disconnect between definition and usage is better than the
+// alternative of requiring every test involving compounds to know about
+// every other.
+// If you need a new type for a test, add it to the struct and not the
+// test. Any compound type used in a test must still be added in that
+// test, do not assume it has already been added to a resolver.
+namespace TestTypes {
+
+const static auto emptyType = CompoundType("emptyType", {});
+const static auto fakeEmptyType =
+    CompoundType("fakeEmptyType", {{"i", {"int"}}});
+const static auto duplicateEmptyType = CompoundType("emptyType", {});
+
+const static auto singleIntType =
+    CompoundType("singleIntType", {{"i", {"int"}}});
+const static auto fakeBasicType = CompoundType("int", {});
+
+const static auto multiType = CompoundType("multiType",
+    {{"i", {"int"}},
+        {"d", {"double"}},
+        {"s1", {"string"}},
+        {"s2", {"string"}}});
+
+}; // namespace TestTypes
+
 TEST_CASE("Can make compound types", "[CompoundType]") {
-    CompoundType emptyType("emptyType", {});
-    REQUIRE(emptyType.name() == "emptyType");
-    REQUIRE(emptyType.members().size() == 0);
+    REQUIRE(TestTypes::emptyType.name() == "emptyType");
+    REQUIRE(TestTypes::emptyType.members().size() == 0);
 
-    CompoundType singleType("singleType", {{"i", {"int"}}});
-    REQUIRE(singleType.name() == "singleType");
-    REQUIRE(singleType.members().size() == 1);
+    REQUIRE(TestTypes::singleIntType.name() == "singleIntType");
+    REQUIRE(TestTypes::singleIntType.members().size() == 1);
 
-    CompoundType multiType("multiType",
-        {{"i", {"int"}},
-            {"d", {"double"}},
-            {"s1", {"string"}},
-            {"s2", {"string"}}});
-    REQUIRE(multiType.name() == "multiType");
-    REQUIRE(multiType.members().size() == 4);
+    REQUIRE(TestTypes::multiType.name() == "multiType");
+    REQUIRE(TestTypes::multiType.members().size() == 4);
 }
 
 // clang-format off
 TEST_CASE("Can register and lookup compound types",
         "[BasicResolver][CompoundType]") {
     // clang-format on
-    CompoundType emptyType("emptyType", {});
-    BR::registerCompoundType(emptyType);
+    BR::registerCompoundType(TestTypes::emptyType);
     REQUIRE(BR::isCompoundType("emptyType"));
-    REQUIRE(BR::resolveCompound("emptyType") == emptyType);
+    REQUIRE(BR::resolveCompound("emptyType") == TestTypes::emptyType);
 
-    CompoundType fooType("Foo",
-        {{"i", {"int"}}, {"f", {"float"}}, {"s", {"string"}}, {"d", {"int"}}});
-    BR::registerCompoundType(fooType);
-    REQUIRE(BR::isCompoundType("Foo"));
-    REQUIRE(BR::resolveCompound("Foo") == fooType);
+    BR::registerCompoundType(TestTypes::multiType);
+    REQUIRE(BR::isCompoundType("multiType"));
+    REQUIRE(BR::resolveCompound("multiType") == TestTypes::multiType);
 
     SECTION("Re-adding a type does not modify or throw") {
-        REQUIRE_NOTHROW(BR::registerCompoundType(emptyType));
+        REQUIRE_NOTHROW(BR::registerCompoundType(TestTypes::emptyType));
         REQUIRE(BR::isCompoundType("emptyType"));
-        REQUIRE(BR::resolveCompound("emptyType") == emptyType);
+        REQUIRE(BR::resolveCompound("emptyType") == TestTypes::emptyType);
     }
 
     SECTION("Adding an identical but separately constructed type does not "
             "modify or throw") {
-        CompoundType fakeEmptyType("emptyType", {});
-        REQUIRE(fakeEmptyType == emptyType);
-        REQUIRE_NOTHROW(BR::registerCompoundType(fakeEmptyType));
+        REQUIRE(TestTypes::duplicateEmptyType == TestTypes::emptyType);
+        REQUIRE_NOTHROW(
+            BR::registerCompoundType(TestTypes::duplicateEmptyType));
         REQUIRE(BR::isCompoundType("emptyType"));
-        REQUIRE(BR::resolveCompound("emptyType") == emptyType);
+        REQUIRE(
+            BR::resolveCompound("emptyType") == TestTypes::duplicateEmptyType);
     }
 
     SECTION("Adding a type with an existing key does not modify or throw") {
-        CompoundType fakeEmptyType("emptyType", {{"i", {"int"}}});
-        REQUIRE_NOTHROW(BR::registerCompoundType(fakeEmptyType));
+        REQUIRE_NOTHROW(BR::registerCompoundType(TestTypes::fakeEmptyType));
         REQUIRE(BR::isCompoundType("emptyType"));
-        REQUIRE(BR::resolveCompound("emptyType") == emptyType);
+        REQUIRE(BR::resolveCompound("emptyType") == TestTypes::emptyType);
     }
 
     SECTION("Querying nonexistent types returns false and resolving "
@@ -134,7 +151,6 @@ TEST_CASE("Can register and lookup compound types",
     }
 
     SECTION("Adding a type with the same name as a Basic throws") {
-        CompoundType fakeBasicType("int", {});
-        REQUIRE_THROWS(BR::registerCompoundType(fakeBasicType));
+        REQUIRE_THROWS(BR::registerCompoundType(TestTypes::fakeBasicType));
     }
 }
