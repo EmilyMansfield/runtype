@@ -8,7 +8,10 @@
 #include <map>
 #include <memory>
 #include <ostream>
+#include <unordered_map>
+#include <utility>
 #include <variant>
+#include <vector>
 
 namespace runtype {
 
@@ -50,20 +53,20 @@ inline void makeTypeMapImpl(TypeMap_t<B>& m, std::list<std::string> types) {
 // correspoing to the types in the Pack
 template <typename R, typename... U>
 inline TypeMap_t<Basic<R, U...>> makeTypeMap(
-    detail::Pack<U...>, std::list<std::string> types) {
+    detail::Pack<U...> /*unused*/, std::list<std::string> types) {
     TypeMap_t<Basic<R, U...>> m;
     detail::makeTypeMapImpl<Basic<R, U...>, U...>(m, types);
     return m;
 }
 
 // All type variants (Basic, Compound etc) should derive this
-class TypeInstance {
+class TypeInstance { // NOLINT (rule of 5 is not needed)
 public:
     virtual std::ostream& write(std::ostream&) const = 0;
     virtual std::istream& read(std::istream&) = 0;
-    virtual ~TypeInstance() {
-    }
-    virtual const TypeInstance& operator()(const std::string&) const {
+    virtual ~TypeInstance() = default;
+    virtual const TypeInstance& operator()(
+        const std::string& /*unused*/) const {
         throw std::runtime_error("Not a compound type");
     }
 };
@@ -157,7 +160,7 @@ public:
         return *this;
     }
 
-    constexpr OrderPreservingMapIteratorImpl operator++(int) {
+    constexpr const OrderPreservingMapIteratorImpl operator++(int) {
         auto tmp(*this);
         operator++();
         return tmp;
@@ -168,7 +171,7 @@ public:
         return *this;
     }
 
-    constexpr OrderPreservingMapIteratorImpl operator--(int) {
+    constexpr const OrderPreservingMapIteratorImpl operator--(int) {
         auto tmp(*this);
         operator--();
         return tmp;
@@ -246,8 +249,9 @@ private:
     // otherwise do nothing
     constexpr inline void track_insert(const std::pair<map_iterator, bool>& p) {
         auto[it, success] = p;
-        if (success)
+        if (success) {
             vec_.push_back(it);
+        }
     }
 
     // Convert an unordered_map iterator/bool pair to an ordered one
@@ -263,6 +267,13 @@ public:
             emplace(x);
         }
     }
+    constexpr OrderPreservingMap& operator=(
+        const OrderPreservingMap& /*unused*/) = default;
+    constexpr OrderPreservingMap(
+        OrderPreservingMap&& /*unused*/) noexcept = default;
+    constexpr OrderPreservingMap& operator=(
+        OrderPreservingMap&& /*unused*/) noexcept = default;
+    ~OrderPreservingMap() = default;
 
     // Construct from an initializer_list of key,value pairs
     constexpr OrderPreservingMap(std::initializer_list<value_type> init,
@@ -366,8 +377,9 @@ public:
     // Equality respects insertion order
     friend constexpr inline bool operator==(
         const OrderPreservingMap& lhs, const OrderPreservingMap& rhs) {
-        if (lhs.size() != rhs.size())
+        if (lhs.size() != rhs.size()) {
             return false;
+        }
         for (auto lhs_it = std::begin(lhs), rhs_it = std::begin(rhs);
              lhs_it != std::end(lhs) && rhs_it != std::end(rhs);
              ++lhs_it, ++rhs_it) {
@@ -420,22 +432,22 @@ private:
 
 public:
     // Construct from one of the underlying types
-    template <typename T> constexpr Basic(const T& rhs) : v_(rhs) {
+    template <typename T> constexpr explicit Basic(const T& rhs) : v_(rhs) {
     }
 
-    constexpr Basic(const detail::TypeInstance& rhs)
+    constexpr explicit Basic(const detail::TypeInstance& rhs)
         : Basic(dynamic_cast<const Basic<R, U...>&>(rhs)) {
     }
 
     // Write current value to a stream
-    std::ostream& write(std::ostream& os) const {
+    std::ostream& write(std::ostream& os) const override {
         std::visit([&os](auto&& arg) { os << arg; }, v_);
         return os;
     }
 
     // Read from a stream, under the assumption that the stream contains
     // data of the same type currently stored
-    std::istream& read(std::istream& is) {
+    std::istream& read(std::istream& is) override {
         std::visit([&is](auto&& arg) { is >> arg; }, v_);
         return is;
     }
@@ -485,12 +497,12 @@ private:
     const container_type members_;
 
 public:
-    CompoundType(const std::string& name,
-        std::initializer_list<container_type::value_type> l)
-        : name_(name), members_(l) {
+    CompoundType(
+        std::string name, std::initializer_list<container_type::value_type> l)
+        : name_(std::move(name)), members_(l) {
     }
 
-    constexpr const container_type& members() const {
+    const container_type& members() const {
         return members_;
     }
 
@@ -544,24 +556,31 @@ public:
             }
         }
     }
+    constexpr CompoundInstance& operator=(
+        const CompoundInstance& /*unused*/) = default;
 
     CompoundInstance(const std::string& type, std::istream& is)
         : type_(Resolver::resolveCompound(type)) {
         read(is);
     }
 
-    constexpr CompoundInstance(const detail::TypeInstance& rhs)
+    ~CompoundInstance() override = default;
+    CompoundInstance(CompoundInstance&& /*unused*/) noexcept = default;
+    CompoundInstance& operator=(
+        CompoundInstance&& /*unused*/) noexcept = default;
+
+    constexpr explicit CompoundInstance(const detail::TypeInstance& rhs)
         : CompoundInstance(dynamic_cast<const CompoundInstance<R>&>(rhs)) {
     }
 
-    std::ostream& write(std::ostream& os) const {
+    std::ostream& write(std::ostream& os) const override {
         for (const auto& m : members_) {
             m.second->write(os);
         }
         return os;
     }
 
-    std::istream& read(std::istream& is) {
+    std::istream& read(std::istream& is) override {
         for (const auto & [ name, member ] : type_.members()) {
             if (R::isBasicType(member.type)) {
                 members_[name] = std::make_unique<typename R::BasicType>(
