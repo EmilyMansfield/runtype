@@ -599,6 +599,19 @@ public:
         const std::string& name) const override {
         return *members_.at(name);
     }
+
+    template <typename T> const T& get(const std::string& name) const {
+        return dynamic_cast<const typename R::BasicType&>(*members_.at(name))
+            .template get<T>();
+    }
+
+    const CompoundInstance<R>& get(const std::string& name) const {
+        return dynamic_cast<const CompoundInstance<R>&>(*members_.at(name));
+    }
+
+    const CompoundType& type() const {
+        return type_;
+    }
 };
 
 template <typename R>

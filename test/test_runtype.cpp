@@ -69,6 +69,28 @@ TEST_CASE("Duplicate basic type keys are ignored", "[BasicResolver]") {
     REQUIRE(B2R::resolveBasic("b")(floatStream).get<float>() == 3.5);
 }
 
+TEST_CASE("Can instantiate basics", "[Basic]") {
+    std::stringstream intStream("10");
+
+    intStream.seekg(0);
+    auto intFromString = B::create("int", intStream);
+    REQUIRE(intFromString.get<int>() == 10);
+
+    intStream.seekg(0);
+    auto intFromTemplate = B::create<int>(intStream);
+    REQUIRE(intFromString.get<int>() == 10);
+
+    intStream.seekg(0);
+    REQUIRE_THROWS_AS(B::create("", intStream), std::out_of_range);
+
+    B intFromT(7);
+    REQUIRE(intFromT.get<int>() == 7);
+
+    detail::TypeInstance& bPtr = intFromT;
+    B bFromTypeInstance(bPtr);
+    REQUIRE(bFromTypeInstance.get<int>() == intFromT.get<int>());
+}
+
 // To avoid dependencies between test cases and to prevent accidental
 // attempts to redefine types, only use the compounds in this namespace.
 // The disconnect between definition and usage is better than the
@@ -94,6 +116,8 @@ const static auto multiType = CompoundType("multiType",
         {"s1", {"string"}},
         {"s2", {"string"}}});
 
+const static auto nestedType =
+    CompoundType("nestedType", {{"i", {"int"}}, {"m", {"multiType"}}});
 }; // namespace TestTypes
 
 TEST_CASE("Can make compound types", "[CompoundType]") {
@@ -153,4 +177,53 @@ TEST_CASE("Can register and lookup compound types",
     SECTION("Adding a type with the same name as a Basic throws") {
         REQUIRE_THROWS(BR::registerCompoundType(TestTypes::fakeBasicType));
     }
+}
+
+TEST_CASE("Can instantiate compounds", "[CompoundInstance]") {
+    std::stringstream ignoreStream("10 Hello");
+    std::stringstream intStream("5");
+    std::stringstream nestedStream("6 10 3.7 hello world");
+
+    BR::registerCompoundType(TestTypes::emptyType);
+    BR::registerCompoundType(TestTypes::singleIntType);
+    BR::registerCompoundType(TestTypes::nestedType);
+
+    std::unique_ptr<CompoundInstance<BR>> emptyCompound;
+    std::unique_ptr<CompoundInstance<BR>> intCompound;
+    std::unique_ptr<CompoundInstance<BR>> nestedCompound;
+
+    SECTION("Instantiation using a resolver") {
+        emptyCompound =
+            std::make_unique<CompoundInstance<BR>>("emptyType", ignoreStream);
+        intCompound =
+            std::make_unique<CompoundInstance<BR>>("singleIntType", intStream);
+        nestedCompound =
+            std::make_unique<CompoundInstance<BR>>("nestedType", nestedStream);
+    }
+
+    SECTION("Instantiation directly from type") {
+        emptyCompound = std::make_unique<CompoundInstance<BR>>(
+            TestTypes::emptyType.create<BR>(ignoreStream));
+        intCompound = std::make_unique<CompoundInstance<BR>>(
+            TestTypes::singleIntType.create<BR>(intStream));
+        nestedCompound = std::make_unique<CompoundInstance<BR>>(
+            TestTypes::nestedType.create<BR>(nestedStream));
+    }
+
+    REQUIRE(ignoreStream.tellg() == 0); // Do not consume
+    REQUIRE(emptyCompound->type() == TestTypes::emptyType);
+    REQUIRE_THROWS_AS(emptyCompound->get<int>("i"), std::out_of_range);
+
+    REQUIRE(intCompound->type() == TestTypes::singleIntType);
+    REQUIRE(intCompound->get<int>("i") == 5);
+    REQUIRE_THROWS_AS(intCompound->get<int>("f"), std::out_of_range);
+
+    REQUIRE(nestedCompound->type() == TestTypes::nestedType);
+    REQUIRE(nestedCompound->get<int>("i") == 6);
+    REQUIRE_THROWS_AS(nestedCompound->get<int>("m"), std::bad_cast);
+    auto multi = nestedCompound->get("m");
+    REQUIRE(multi.get<int>("i") == 10);
+    REQUIRE(multi.get<double>("d") == 3.7);
+    REQUIRE(multi.get<std::string>("s1") == "hello");
+    REQUIRE(multi.get<std::string>("s2") == "world");
 }
