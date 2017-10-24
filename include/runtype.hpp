@@ -1,3 +1,4 @@
+// vim: colorcolumn=80
 #ifndef RUNTYPE_HPP
 #define RUNTYPE_HPP
 
@@ -22,6 +23,7 @@ using TypeMap_t =
 template <typename R, typename... U> class Basic;
 
 namespace detail {
+
 // Used to pass parameter packs as arguments to help type deduction
 template <typename... U> struct Pack {};
 
@@ -62,9 +64,9 @@ inline TypeMap_t<Basic<R, U...>> makeTypeMap(
 // All type variants (Basic, Compound etc) should derive this
 class TypeInstance { // NOLINT (rule of 5 is not needed)
 public:
+    virtual ~TypeInstance() = default;
     virtual std::ostream& write(std::ostream&) const = 0;
     virtual std::istream& read(std::istream&) = 0;
-    virtual ~TypeInstance() = default;
     virtual const TypeInstance& operator()(
         const std::string& /*unused*/) const {
         throw std::runtime_error("Not a compound type");
@@ -105,6 +107,7 @@ class OrderPreservingMapIteratorImpl {
     // PRs welcome.
     using order_type =
         typename std::conditional<IsConst, const vec_type&, vec_type&>::type;
+
     // The ordering is kept by the underlying map not the iterator;
     // each iterator needs to be bound to a map which provides the
     // ordering used -- and ++ etc
@@ -240,10 +243,11 @@ public:
         OrderPreservingMapConstIterator<Key, T, Hash, KeyEqual, Allocator>;
 
 private:
-    map_type map_;
     // The iterator at index i points is the (i+1)-th element that
-    // was added
+    // was added, e.g. vec_[0] points to the entry of map_ that was
+    // inserted first.
     vec_type vec_;
+    map_type map_;
 
     // Insert the iterator into the tracker if the bool is true,
     // otherwise do nothing
@@ -261,20 +265,6 @@ private:
     }
 
 public:
-    constexpr OrderPreservingMap() = default;
-    constexpr OrderPreservingMap(const OrderPreservingMap& rhs) {
-        for (const auto& x : rhs) {
-            emplace(x);
-        }
-    }
-    constexpr OrderPreservingMap& operator=(
-        const OrderPreservingMap& /*unused*/) = default;
-    constexpr OrderPreservingMap(
-        OrderPreservingMap&& /*unused*/) noexcept = default;
-    constexpr OrderPreservingMap& operator=(
-        OrderPreservingMap&& /*unused*/) noexcept = default;
-    ~OrderPreservingMap() = default;
-
     // Construct from an initializer_list of key,value pairs
     constexpr OrderPreservingMap(std::initializer_list<value_type> init,
         size_type bucket_count = 0,
@@ -286,6 +276,25 @@ public:
             emplace(x);
         }
     }
+
+    constexpr OrderPreservingMap() = default;
+
+    constexpr OrderPreservingMap(const OrderPreservingMap& rhs) {
+        for (const auto& x : rhs) {
+            emplace(x);
+        }
+    }
+
+    constexpr OrderPreservingMap& operator=(
+        const OrderPreservingMap& /*unused*/) = default;
+
+    constexpr OrderPreservingMap(
+        OrderPreservingMap&& /*unused*/) noexcept = default;
+
+    constexpr OrderPreservingMap& operator=(
+        OrderPreservingMap&& /*unused*/) noexcept = default;
+
+    ~OrderPreservingMap() = default;
 
     constexpr iterator begin() {
         return iterator(vec_, std::begin(vec_));
@@ -399,15 +408,8 @@ public:
 
 } // namespace detail
 
-// R is any `Resolver` class, namely any class with a static function
-// with signature
-//
-//     static std::function<<Basic<R,U...>(std::istream&)> at(const
-//     std::string&);
-//
-// that maps type names to functions that construct a Basic<R,U...> with
-// the given type when passed an input stream. See the BasicResolver
-// class for a simple example using a std::map.
+// R is any `Resolver` class, namely any class that implements the same
+// public interface as BasicResolver.
 //
 // The parameter pack U contains the possible types that can be stored.
 // There are the following requirements on parameters in U:
@@ -427,10 +429,6 @@ public:
     using Types = detail::Pack<U...>;
     using Resolver = R;
 
-private:
-    Variant v_;
-
-public:
     // Construct from one of the underlying types
     template <typename T> constexpr explicit Basic(const T& rhs) : v_(rhs) {
     }
@@ -471,6 +469,9 @@ public:
     static Basic<R, U...> create(const std::string& type, std::istream& is) {
         return Resolver::resolveBasic(type)(is);
     }
+
+private:
+    Variant v_;
 };
 
 template <typename R, typename... U>
@@ -541,6 +542,15 @@ template <typename R> class CompoundInstance : public detail::TypeInstance {
     container_type members_;
 
 public:
+    CompoundInstance(const std::string& type, std::istream& is)
+        : type_(Resolver::resolveCompound(type)) {
+        read(is);
+    }
+
+    constexpr explicit CompoundInstance(const detail::TypeInstance& rhs)
+        : CompoundInstance(dynamic_cast<const CompoundInstance<R>&>(rhs)) {
+    }
+
     constexpr CompoundInstance(const CompoundInstance<R>& rhs)
         : type_(rhs.type_) {
         for (const auto & [ name, m ] : rhs.members_) {
@@ -556,22 +566,16 @@ public:
             }
         }
     }
+
     constexpr CompoundInstance& operator=(
         const CompoundInstance& /*unused*/) = default;
 
-    CompoundInstance(const std::string& type, std::istream& is)
-        : type_(Resolver::resolveCompound(type)) {
-        read(is);
-    }
-
-    ~CompoundInstance() override = default;
     CompoundInstance(CompoundInstance&& /*unused*/) noexcept = default;
+
     CompoundInstance& operator=(
         CompoundInstance&& /*unused*/) noexcept = default;
 
-    constexpr explicit CompoundInstance(const detail::TypeInstance& rhs)
-        : CompoundInstance(dynamic_cast<const CompoundInstance<R>&>(rhs)) {
-    }
+    ~CompoundInstance() override = default;
 
     std::ostream& write(std::ostream& os) const override {
         for (const auto& m : members_) {
