@@ -7,6 +7,6 @@ add_compile_options(-Wall -Wextra -std=c++17)
 add_library(Runtype INTERFACE)
 target_include_directories(Runtype INTERFACE include)
 
-enable_testing()
+include(CTest)
 add_subdirectory(test)
 add_subdirectory(libs/catch)

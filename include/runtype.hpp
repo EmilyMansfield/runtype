@@ -593,7 +593,7 @@ public:
                 members_[name] = std::make_unique<CompoundInstance<R>>(
                     R::resolveCompound(member.type).template create<R>(is));
             } else {
-                throw std::runtime_error("No such type");
+                throw std::runtime_error("No such type: " + member.type);
             }
         }
         return is;

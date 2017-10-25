@@ -118,6 +118,10 @@ const static auto multiType = CompoundType("multiType",
 
 const static auto nestedType =
     CompoundType("nestedType", {{"i", {"int"}}, {"m", {"multiType"}}});
+
+const static auto incompleteType =
+    CompoundType("incompleteType", {{"m", {"NOT_IMPLEMENTED"}}});
+
 }; // namespace TestTypes
 
 TEST_CASE("Can make compound types", "[CompoundType]") {
@@ -186,6 +190,7 @@ TEST_CASE("Can instantiate compounds", "[CompoundInstance]") {
 
     BR::registerCompoundType(TestTypes::emptyType);
     BR::registerCompoundType(TestTypes::singleIntType);
+    BR::registerCompoundType(TestTypes::multiType);
     BR::registerCompoundType(TestTypes::nestedType);
 
     std::unique_ptr<CompoundInstance<BR>> emptyCompound;
@@ -226,4 +231,12 @@ TEST_CASE("Can instantiate compounds", "[CompoundInstance]") {
     REQUIRE(multi.get<double>("d") == 3.7);
     REQUIRE(multi.get<std::string>("s1") == "hello");
     REQUIRE(multi.get<std::string>("s2") == "world");
+}
+
+TEST_CASE("Cannot instantiate incomplete types", "[CompoundType]") {
+    std::stringstream emptyStream("");
+    BR::registerCompoundType(TestTypes::incompleteType);
+
+    REQUIRE_THROWS(TestTypes::incompleteType.create<BR>(emptyStream));
+    REQUIRE_THROWS(CompoundInstance<BR>("incompleteType", emptyStream));
 }
